@@ -15,6 +15,7 @@ import { fmtDuration } from "@/lib/view";
 import type { DayRollup, EffortPerTag, WeeklyRecap } from "@/lib/recap";
 import type { InsightsPayload } from "@/lib/insights";
 import { HeatmapCard, UntrackedCard } from "../InsightCards";
+import { NotesSection } from "../NotesSection";
 
 const WIB_OFFSET_MS = 7 * 60 * 60_000;
 
@@ -290,6 +291,9 @@ export function RecapWeeklyClient({ initial }: { initial: WeeklyRecap }) {
         {/* Hour heatmap + untracked-time insights (Phase 6) */}
         {insights ? <HeatmapCard heatmap={insights.heatmap} /> : null}
         {insights ? <UntrackedCard untracked={insights.untracked} /> : null}
+
+        {/* Daily notes written across the week (read-only) */}
+        <NotesSection notes={recap.notes ?? {}} title="Daily notes this week" />
       </div>
     </main>
   );

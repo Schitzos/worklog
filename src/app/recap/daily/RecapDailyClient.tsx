@@ -24,6 +24,15 @@ function slotLabel(slot: string): string {
   return `${a}:00–${b}:00`;
 }
 
+/** Format a fractional WIB hour (e.g. 11.5) as HH:MM. */
+function hourToHHMM(h: number): string {
+  const hh = Math.floor(h);
+  const mm = Math.round((h - hh) * 60);
+  // Guard the rounding edge (e.g. 11.999 → 12:00, not 11:60).
+  const carry = mm === 60 ? 1 : 0;
+  return `${String(hh + carry).padStart(2, "0")}:${String(carry ? 0 : mm).padStart(2, "0")}`;
+}
+
 /** A number that counts up from 0 to `to` once, formatted by `fmt`. */
 function CountUp({
   to,
@@ -142,6 +151,215 @@ function SkeletonRecap() {
             <div key={i} className="skeleton" style={{ height: 24, marginBottom: 14 }} />
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+const NOTE_MAX = 2000;
+
+/**
+ * Editable free-text note for one day. Loads the note for `workDate`, lets the
+ * user edit a textarea (capped at 2000 chars), and saves via PUT. Independent
+ * of entries/slots — purely a personal reminder for the day.
+ */
+function DailyNoteCard({ workDate }: { workDate: string }) {
+  const [note, setNote] = useState("");
+  const [saved, setSaved] = useState("");
+  const [state, setState] = useState<"idle" | "loading" | "saving" | "done" | "error">("loading");
+
+  useEffect(() => {
+    let cancelled = false;
+    setState("loading");
+    fetch(`/api/notes/daily?date=${workDate}`)
+      .then((r) => (r.ok ? r.json() : { note: "" }))
+      .then((d: { note?: string }) => {
+        if (cancelled) return;
+        setNote(d.note ?? "");
+        setSaved(d.note ?? "");
+        setState("idle");
+      })
+      .catch(() => !cancelled && setState("error"));
+    return () => {
+      cancelled = true;
+    };
+  }, [workDate]);
+
+  const dirty = note !== saved;
+
+  const save = useCallback(async () => {
+    setState("saving");
+    try {
+      const res = await fetch(`/api/notes/daily?date=${workDate}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ note }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      const d = (await res.json()) as { note?: string };
+      setSaved(d.note ?? "");
+      setNote(d.note ?? "");
+      setState("done");
+      setTimeout(() => setState("idle"), 1600);
+    } catch {
+      setState("error");
+    }
+  }, [note, workDate]);
+
+  return (
+    <div className="bezel bento-note" data-testid="daily-note-card">
+      <div className="bezel-core" style={{ padding: "1.1rem 1.2rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "0.6rem" }}>
+          <h3 style={{ margin: 0, fontSize: "0.9rem", fontWeight: 600 }}>
+            Daily note <span className="mono" style={{ color: "var(--muted)", fontWeight: 400, fontSize: "0.72rem" }}>· optional</span>
+          </h3>
+          <span className="mono" style={{ fontSize: "0.7rem", color: note.length > NOTE_MAX * 0.9 ? "var(--warn)" : "var(--muted)" }}>
+            {note.length}/{NOTE_MAX}
+          </span>
+        </div>
+        <textarea
+          data-testid="daily-note-input"
+          className="note-textarea"
+          value={note}
+          maxLength={NOTE_MAX}
+          placeholder="A reminder or summary for this day — what to remember later, context the timed entries don't capture…"
+          disabled={state === "loading"}
+          onChange={(e) => setNote(e.target.value.slice(0, NOTE_MAX))}
+          rows={5}
+          style={{
+            width: "100%",
+            minHeight: "7rem",
+            resize: "vertical",
+            background: "var(--canvas)",
+            color: "var(--ink)",
+            border: "1px solid var(--hairline)",
+            borderRadius: "0.6rem",
+            padding: "0.6rem 0.7rem",
+            fontSize: "0.85rem",
+            lineHeight: 1.5,
+            fontFamily: "inherit",
+          }}
+        />
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "0.6rem", marginTop: "0.6rem" }}>
+          {state === "done" ? (
+            <span className="mono" style={{ fontSize: "0.72rem", color: "var(--accent)" }}>Saved ✓</span>
+          ) : state === "error" ? (
+            <span className="mono" style={{ fontSize: "0.72rem", color: "var(--warn)" }}>Save failed — retry</span>
+          ) : null}
+          <button
+            type="button"
+            data-testid="daily-note-save"
+            className="pill-cta"
+            onClick={() => void save()}
+            disabled={!dirty || state === "saving" || state === "loading"}
+            style={{ opacity: !dirty || state === "saving" ? 0.5 : 1 }}
+          >
+            {state === "saving" ? "Saving…" : "Save note"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Read-only AUTO summary for the day, written by Gemini (or a deterministic
+ * fallback). DISTINCT from the editable Daily note above — the user never types
+ * here; a cron/launchd job or the Regenerate button produces it. Shows the
+ * source (Gemini vs fallback) so it's clear when the key is missing.
+ */
+function DailySummaryCard({ workDate }: { workDate: string }) {
+  const [summary, setSummary] = useState("");
+  const [source, setSource] = useState<"gemini" | "fallback" | null>(null);
+  const [hasKey, setHasKey] = useState(true);
+  const [state, setState] = useState<"idle" | "loading" | "generating" | "error">("loading");
+
+  useEffect(() => {
+    let cancelled = false;
+    setState("loading");
+    fetch(`/api/summary/daily?date=${workDate}`)
+      .then((r) => (r.ok ? r.json() : {}))
+      .then((d: { summary?: string; source?: "gemini" | "fallback" | null; hasKey?: boolean }) => {
+        if (cancelled) return;
+        setSummary(d.summary ?? "");
+        setSource(d.source ?? null);
+        setHasKey(d.hasKey ?? true);
+        setState("idle");
+      })
+      .catch(() => !cancelled && setState("error"));
+    return () => {
+      cancelled = true;
+    };
+  }, [workDate]);
+
+  const regenerate = useCallback(async () => {
+    setState("generating");
+    try {
+      const res = await fetch(`/api/summary/daily?date=${workDate}`, { method: "POST" });
+      if (!res.ok) throw new Error(String(res.status));
+      const d = (await res.json()) as {
+        summary?: string;
+        source?: "gemini" | "fallback" | null;
+        hasKey?: boolean;
+      };
+      setSummary(d.summary ?? "");
+      setSource(d.source ?? null);
+      setHasKey(d.hasKey ?? true);
+      setState("idle");
+    } catch {
+      setState("error");
+    }
+  }, [workDate]);
+
+  return (
+    <div className="bezel bento-summary" data-testid="daily-summary-card">
+      <div className="bezel-core" style={{ padding: "1.1rem 1.2rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "0.6rem", gap: "0.6rem" }}>
+          <h3 style={{ margin: 0, fontSize: "0.9rem", fontWeight: 600 }}>
+            Auto summary{" "}
+            <span className="mono" style={{ color: "var(--muted)", fontWeight: 400, fontSize: "0.72rem" }}>
+              · {source === "fallback" ? "basic (no AI key)" : "AI-generated"}
+            </span>
+          </h3>
+          <button
+            type="button"
+            data-testid="daily-summary-regenerate"
+            className="pill-cta"
+            onClick={() => void regenerate()}
+            disabled={state === "generating" || state === "loading"}
+            style={{ opacity: state === "generating" || state === "loading" ? 0.5 : 1 }}
+          >
+            {state === "generating" ? "Generating…" : "Regenerate"}
+          </button>
+        </div>
+
+        <div
+          data-testid="daily-summary-text"
+          style={{
+            minHeight: "4.5rem",
+            background: "var(--canvas)",
+            border: "1px solid var(--hairline)",
+            borderRadius: "0.6rem",
+            padding: "0.7rem 0.8rem",
+            fontSize: "0.86rem",
+            lineHeight: 1.6,
+            color: summary ? "var(--ink)" : "var(--muted)",
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {state === "loading"
+            ? "Loading…"
+            : state === "error"
+              ? "Could not load the summary."
+              : summary ||
+                "No summary yet. It is generated automatically for past days, or press Regenerate to create one now."}
+        </div>
+
+        {!hasKey ? (
+          <p className="mono" style={{ fontSize: "0.7rem", color: "var(--muted)", margin: "0.5rem 0 0" }}>
+            No Gemini key found — showing a basic summary. Add GEMINI_KEY to .env for AI-written prose.
+          </p>
+        ) : null}
       </div>
     </div>
   );
@@ -267,7 +485,10 @@ export function RecapDailyClient({ initial }: { initial: DailyRecap }) {
               </div>
               {recap.gaps.length > 0 ? (
                 <p className="mono" style={{ margin: "0.75rem 0 0", color: "var(--warn)", fontSize: "0.76rem" }}>
-                  {recap.gaps.length} untracked gap{recap.gaps.length > 1 ? "s" : ""} in 10:00–16:00
+                  {recap.gaps.length} untracked gap{recap.gaps.length > 1 ? "s" : ""}:{" "}
+                  {recap.gaps
+                    .map((g) => `${hourToHHMM(g.fromHour)}–${hourToHHMM(g.toHour)}`)
+                    .join(", ")}
                 </p>
               ) : null}
             </div>
@@ -333,6 +554,12 @@ export function RecapDailyClient({ initial }: { initial: DailyRecap }) {
               )}
             </div>
           </div>
+
+          {/* Daily note (editable, optional) — full-width row */}
+          <DailyNoteCard key={`note-${recap.workDate}`} workDate={recap.workDate} />
+
+          {/* Auto summary (read-only, AI-generated) — full-width row */}
+          <DailySummaryCard key={`sum-${recap.workDate}`} workDate={recap.workDate} />
         </div>
       )}
     </main>
