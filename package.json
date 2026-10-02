@@ -3,12 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -H 127.0.0.1 -p 7070",
+    "dev": "DATABASE_URL=file:./worklog.dev.db next dev -H 127.0.0.1 -p 7071",
     "build": "next build",
-    "start": "next start -H 127.0.0.1 -p 7070",
+    "start": "DATABASE_URL=file:./worklog.prod.db PORT=7070 next start -H 127.0.0.1 -p 7070",
+    "start:prod": "DATABASE_URL=file:./worklog.prod.db PORT=7070 next start -H 127.0.0.1 -p 7070",
+    "go-live": "bash scripts/go-live.sh",
     "lint": "next lint",
     "test:e2e": "playwright test",
-    "db:reset": "bash scripts/db-reset.sh"
+    "db:reset": "bash scripts/db-reset.sh",
+    "db:reset:dev": "bash scripts/db-reset.sh dev"
   },
   "dependencies": {
     "@phosphor-icons/react": "2.1.7",

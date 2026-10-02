@@ -12,11 +12,29 @@
 *.tsbuildinfo
 next-env.d.ts
 
-# local database (SQLite)
+# local databases (SQLite) — three isolated environments
+/worklog.prod.db
+/worklog.prod.db-journal
+/worklog.prod.db-wal
+/worklog.prod.db-shm
+/worklog.dev.db
+/worklog.dev.db-journal
+/worklog.dev.db-wal
+/worklog.dev.db-shm
+# legacy single DB name (pre dev/prod split)
 /worklog.db
 /worklog.db-journal
 /worklog.db-wal
 /worklog.db-shm
+
+# throwaway E2E test database (isolated from the real app)
+/worklog.test.db
+/worklog.test.db-journal
+/worklog.test.db-wal
+/worklog.test.db-shm
+
+# production DB backups (created by go-live / prod reset)
+/backups/
 
 # playwright
 /test-results/
@@ -24,8 +42,10 @@ next-env.d.ts
 /blob-report/
 /playwright/.cache/
 
-# env
-.env*.local
+# env — ignore ALL env files (secrets like GEMINI_KEY live here), keep the template
+.env
+.env.*
+!.env.example
 
 # misc
 .DS_Store
