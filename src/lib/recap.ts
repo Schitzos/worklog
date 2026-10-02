@@ -1,6 +1,7 @@
 import "server-only";
 import { getDb } from "./db";
 import { listEntriesByDate, type EntryRow } from "./entries";
+import { getDailyNote, dailyNotesInRange } from "./notes";
 import {
   SLOTS,
   slotWindowUtc,
@@ -49,6 +50,8 @@ export interface DailyRecap {
   wallClockMin: number;
   slots: SlotStatus[];
   gaps: Gap[];
+  /** Optional free-text note for the day ("" when none). */
+  note: string;
 }
 
 /** Day's entries + tags. Thin reuse of the Phase-1 repository. */
@@ -228,6 +231,7 @@ export function dailyRecap(workDate: string): DailyRecap {
     wallClockMin: wallClockMin(workDate),
     slots: slotStatus(workDate),
     gaps: gapsForDay(workDate),
+    note: getDailyNote(workDate)?.note ?? "",
   };
 }
 
@@ -259,6 +263,8 @@ export interface WeeklyRecap {
   totalWallClockMin: number;
   totalActivities: number;
   completeDays: number;
+  /** { work_date -> note } for days in the week that have a note. */
+  notes: Record<string, string>;
 }
 
 export interface TopTicket {
@@ -277,6 +283,8 @@ export interface MonthlyRecap {
   totalWallClockMin: number;
   totalActivities: number;
   activeDays: number;
+  /** { work_date -> note } for days in the month that have a note. */
+  notes: Record<string, string>;
 }
 
 /** One activity line in the boss-ready export. */
@@ -353,6 +361,7 @@ export function weeklyRecap(mondayDate: string): WeeklyRecap {
     totalWallClockMin: days.reduce((a, d) => a + d.wallClockMin, 0),
     totalActivities: days.reduce((a, d) => a + d.activities, 0),
     completeDays: days.filter((d) => d.coverage === "complete").length,
+    notes: dailyNotesInRange(monday, friday),
   };
 }
 
@@ -396,6 +405,7 @@ export function monthlyRecap(from: string, to: string): MonthlyRecap {
     totalWallClockMin: trend.reduce((a, d) => a + d.wallClockMin, 0),
     totalActivities: trend.reduce((a, d) => a + d.activities, 0),
     activeDays: trend.filter((d) => d.activities > 0).length,
+    notes: dailyNotesInRange(from, to),
   };
 }
 

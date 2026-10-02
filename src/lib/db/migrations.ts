@@ -77,6 +77,46 @@ const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_reminder_log_date ON reminder_log (work_date);
     `,
   },
+  {
+    version: 2,
+    name: "daily_notes",
+    up: /* sql */ `
+      -- One free-text note per WIB day (optional). Independent of entries/slots:
+      -- it never affects effort, wall-clock, coverage or the untracked-gap warning.
+      -- Edited in place (upsert on work_date); max length enforced in the app layer.
+      CREATE TABLE IF NOT EXISTS daily_notes (
+        work_date  TEXT PRIMARY KEY,                   -- WIB calendar day 'YYYY-MM-DD'
+        note       TEXT NOT NULL,                      -- free text, app caps at 2000 chars
+        created_at TEXT NOT NULL,                      -- ISO-8601 UTC
+        updated_at TEXT NOT NULL                       -- ISO-8601 UTC
+      );
+    `,
+  },
+  {
+    version: 3,
+    name: "daily_summary",
+    up: /* sql */ `
+      -- One AUTO-GENERATED summary per WIB day (prose, written by Gemini from the
+      -- day's entries). DISTINCT from daily_notes: daily_notes is typed by the
+      -- user and never auto-written; daily_summary is machine-written and never
+      -- touches the user's note. The cron/launchd job and the regenerate button
+      -- write here only.
+      --   source     — 'gemini' | 'fallback' (deterministic text when no key/error)
+      --   model      — the Gemini model id used (null for fallback)
+      --   src_hash   — hash of the day's entries at generation time, so the
+      --                catch-up job can tell "already summarized" from "stale".
+      CREATE TABLE IF NOT EXISTS daily_summary (
+        work_date   TEXT PRIMARY KEY,                  -- WIB calendar day 'YYYY-MM-DD'
+        summary     TEXT NOT NULL,                     -- prose paragraph
+        source      TEXT NOT NULL DEFAULT 'gemini'
+          CHECK (source IN ('gemini','fallback')),
+        model       TEXT,                              -- gemini model id, or null
+        src_hash    TEXT NOT NULL,                     -- entries fingerprint at gen time
+        created_at  TEXT NOT NULL,                     -- ISO-8601 UTC
+        updated_at  TEXT NOT NULL                      -- ISO-8601 UTC
+      );
+    `,
+  },
 ];
 
 export function runMigrations(db: Database.Database): number {

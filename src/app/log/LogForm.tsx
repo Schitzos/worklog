@@ -180,6 +180,7 @@ export default function LogForm({ slot }: { slot?: string }) {
   return (
     <AnimatePresence>
       <motion.div
+        key="scrim"
         className="sheet-scrim"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -188,6 +189,7 @@ export default function LogForm({ slot }: { slot?: string }) {
         aria-hidden="true"
       />
       <motion.section
+        key="sheet"
         className="sheet"
         role="dialog"
         aria-label="Log an entry"

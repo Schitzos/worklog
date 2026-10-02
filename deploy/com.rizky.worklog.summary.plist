@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>            <string>com.rizky.worklog.summary</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/sh</string>
+      <string>-c</string>
+      <string>/Users/rizkyrachmawan/MyProject/learn/worklog/scripts/summarize.sh</string>
+    </array>
+
+    <!-- Run on login/boot (catch up any missed day) AND every morning at 09:00
+         local time. If the Mac was asleep at 09:00, launchd runs it on the next
+         wake — the catch-up logic backfills every unsummarized past day, so a
+         missed fire is harmless. -->
+    <key>RunAtLoad</key>        <true/>
+    <key>StartCalendarInterval</key>
+    <dict>
+      <key>Hour</key>    <integer>9</integer>
+      <key>Minute</key>  <integer>0</integer>
+    </dict>
+
+    <!-- One-shot per fire; do NOT KeepAlive (this is a task, not a server). -->
+    <key>StandardOutPath</key>  <string>/tmp/worklog.summary.out.log</string>
+    <key>StandardErrorPath</key><string>/tmp/worklog.summary.err.log</string>
+  </dict>
+</plist>

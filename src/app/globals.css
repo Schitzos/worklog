@@ -547,6 +547,8 @@ body {
   .bento-tags { grid-column: span 4; }
   .bento-slots { grid-column: span 3; }
   .bento-entries { grid-column: span 3; }
+  .bento-note { grid-column: 1 / -1; }
+  .bento-summary { grid-column: 1 / -1; }
 }
 
 /* Recap per-tag growing bars (same track as rail, bigger). */

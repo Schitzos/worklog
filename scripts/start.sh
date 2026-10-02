@@ -20,6 +20,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "${PROJECT_DIR}"
 
+# launchd runs with a minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin) that does NOT
+# include Homebrew or nvm, so a bare `npm`/`node` fails with exit 127. Resolve
+# the active Node bin dir and prepend it to PATH. We prefer the newest nvm
+# install, then Homebrew, then whatever `command -v node` already finds.
+if [ -z "$(command -v node 2>/dev/null)" ]; then
+  NVM_NODE_BIN="$(/bin/ls -d "${HOME}"/.nvm/versions/node/*/bin 2>/dev/null | sort -V | tail -1)"
+  for cand in "${NVM_NODE_BIN}" /opt/homebrew/bin /usr/local/bin; do
+    if [ -n "${cand}" ] && [ -x "${cand}/node" ]; then
+      PATH="${cand}:${PATH}"
+      break
+    fi
+  done
+  export PATH
+fi
+echo "[worklog] using node: $(command -v node || echo 'NOT FOUND')"
+
 URL="http://127.0.0.1:7070"
 
 # 1. Ensure a production build exists. .next/BUILD_ID is written only on a
