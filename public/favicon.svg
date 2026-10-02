@@ -1,0 +1,23 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Worklog">
+  <!-- Rounded squircle app tile: Zinc-950 base (never pure black), per DESIGN_SYSTEM -->
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="#09090B"/>
+  <!-- Inner hairline bezel (Double-Bezel nod) -->
+  <rect x="16.5" y="16.5" width="479" height="479" rx="111.5" stroke="#FFFFFF" stroke-opacity="0.08"/>
+
+  <!-- Time ring: three 2-hour slots (10-12, 12-14, 14-16) as arc segments.
+       Two muted (zinc), one accent-teal = "the logged slot". -->
+  <g stroke-width="26" stroke-linecap="round" fill="none">
+    <!-- slot 1 (muted) -->
+    <path d="M256 120 A136 136 0 0 1 374 188" stroke="#3F3F46"/>
+    <!-- slot 2 (muted) -->
+    <path d="M374 324 A136 136 0 0 1 138 324" stroke="#3F3F46"/>
+    <!-- slot 3 (ACCENT teal = the filled/logged slot) -->
+    <path d="M138 188 A136 136 0 0 1 256 120" stroke="#2DD4BF"/>
+  </g>
+
+  <!-- Center check mark = "written down / logged" -->
+  <path d="M212 258 L244 292 L312 220" stroke="#2DD4BF" stroke-width="30" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+  <!-- Clock hand hint, subtle, pointing to the accent slot -->
+  <circle cx="256" cy="256" r="12" fill="#FAFAFA"/>
+</svg>
