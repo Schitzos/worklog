@@ -395,7 +395,10 @@ function EditEntryModal({
   onSaved: () => void;
 }) {
   const [description, setDescription] = useState(entry.description);
-  const [tags, setTags] = useState(entry.tags.join(", "));
+  const [tags, setTags] = useState<string[]>(entry.tags);
+  const [tagInput, setTagInput] = useState("");
+  const [suggestions, setSuggestions] = useState<{ label: string; usage_count: number }[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const [ticket, setTicket] = useState(entry.ticket_id ?? "");
   const [summary, setSummary] = useState(entry.summary ?? "");
   const [startLocal, setStartLocal] = useState(isoToWibLocal(entry.start_at));
@@ -411,6 +414,42 @@ function EditEntryModal({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  // Fetch tag suggestions (debounced), excluding already-selected tags — same
+  // behaviour as the Log form's tag picker.
+  useEffect(() => {
+    let active = true;
+    const handle = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/tags?q=${encodeURIComponent(tagInput)}`);
+        if (!res.ok) return;
+        const data = (await res.json()) as { tags: { label: string; usage_count: number }[] };
+        if (active) {
+          const picked = new Set(tags.map((t) => t.toLowerCase()));
+          setSuggestions(data.tags.filter((s) => !picked.has(s.label.toLowerCase())));
+        }
+      } catch {
+        /* local-only; ignore transient fetch errors */
+      }
+    }, 120);
+    return () => {
+      active = false;
+      clearTimeout(handle);
+    };
+  }, [tagInput, tags, showSuggestions]);
+
+  const addTag = useCallback((raw: string) => {
+    const label = raw.trim();
+    if (!label) return;
+    setTags((prev) =>
+      prev.some((t) => t.toLowerCase() === label.toLowerCase()) ? prev : [...prev, label],
+    );
+    setTagInput("");
+  }, []);
+
+  const removeTag = useCallback((label: string) => {
+    setTags((prev) => prev.filter((t) => t !== label));
+  }, []);
 
   const save = useCallback(async () => {
     const desc = description.trim();
@@ -428,16 +467,18 @@ function EditEntryModal({
     }
     setState("saving");
     setErrMsg("");
+    // Include any tag text left in the input that wasn't committed with Enter.
+    const pending = tagInput.trim();
+    const finalTags = pending && !tags.some((t) => t.toLowerCase() === pending.toLowerCase())
+      ? [...tags, pending]
+      : tags;
     try {
       const res = await fetch(`/api/entries/${entry.id}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           description: desc,
-          tags: tags
-            .split(",")
-            .map((t) => t.trim())
-            .filter(Boolean),
+          tags: finalTags,
           ticket_id: ticket.trim() || null,
           summary: summary.trim() || null,
           start_at: startIso,
@@ -453,7 +494,7 @@ function EditEntryModal({
       setErrMsg(err instanceof Error ? err.message : "Save failed.");
       setState("error");
     }
-  }, [description, tags, ticket, summary, startLocal, endLocal, entry.id, onSaved]);
+  }, [description, tags, tagInput, ticket, summary, startLocal, endLocal, entry.id, onSaved]);
 
   const field: React.CSSProperties = {
     width: "100%",
@@ -531,16 +572,100 @@ function EditEntryModal({
             />
           </div>
 
-          <div>
-            <label style={labelStyle} htmlFor="edit-tags">Tags <span style={{ fontWeight: 400 }}>· comma-separated</span></label>
+          <div style={{ position: "relative" }}>
+            <label style={labelStyle} htmlFor="edit-tags">Tags</label>
+            {tags.length > 0 ? (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginBottom: "0.45rem" }}>
+                {tags.map((t) => (
+                  <span
+                    key={t}
+                    className="tag-pill"
+                    data-testid="edit-tag-chip"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.3rem",
+                      background: "var(--canvas)",
+                      border: "1px solid var(--hairline)",
+                      borderRadius: "999px",
+                      padding: "0.2rem 0.55rem",
+                      fontSize: "0.78rem",
+                      color: "var(--ink)",
+                    }}
+                  >
+                    <span data-testid="edit-tag-chip-label">{t}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeTag(t)}
+                      aria-label={`Remove ${t}`}
+                      style={{ background: "none", border: "none", color: "var(--muted)", cursor: "pointer", lineHeight: 1, padding: 0, fontSize: "0.9rem" }}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : null}
             <input
               id="edit-tags"
               data-testid="edit-entry-tags"
               style={field}
-              value={tags}
-              placeholder="backlog, bugfix"
-              onChange={(e) => setTags(e.target.value)}
+              value={tagInput}
+              placeholder="Add a tag and press Enter"
+              autoComplete="off"
+              onFocus={() => setShowSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 120)}
+              onChange={(e) => setTagInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addTag(tagInput);
+                } else if (e.key === "Backspace" && !tagInput && tags.length) {
+                  removeTag(tags[tags.length - 1]);
+                }
+              }}
             />
+            {showSuggestions && suggestions.length > 0 ? (
+              <ul
+                data-testid="edit-entry-tag-suggestions"
+                style={{
+                  listStyle: "none",
+                  margin: "0.3rem 0 0",
+                  padding: "0.3rem",
+                  background: "var(--surface)",
+                  border: "1px solid var(--hairline)",
+                  borderRadius: "0.6rem",
+                  boxShadow: "0 12px 30px rgba(0,0,0,0.25)",
+                }}
+              >
+                {suggestions.slice(0, 6).map((s) => (
+                  <li
+                    key={s.label}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      addTag(s.label);
+                    }}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "0.4rem 0.55rem",
+                      borderRadius: "0.45rem",
+                      cursor: "pointer",
+                      fontSize: "0.84rem",
+                      color: "var(--ink)",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--canvas)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                  >
+                    <span>{s.label}</span>
+                    <span style={{ color: "var(--muted)", fontSize: "0.74rem", fontFamily: "var(--mono, monospace)" }}>
+                      {s.usage_count}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </div>
 
           <div>

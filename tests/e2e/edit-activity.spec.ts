@@ -139,4 +139,53 @@ test.describe("edit activity", () => {
     // Modal stays open because save was blocked.
     await expect(page.getByTestId("edit-entry-modal")).toBeVisible();
   });
+
+  test("(f) edit modal tag picker: shows chips + suggestion dropdown, add via list", async ({
+    page,
+    request,
+  }) => {
+    // Seed a second tag so the suggestion list has something to offer.
+    const otherTag = `edit-other-${RUN}`;
+    const marker = `ui-tagpick ${RUN}`;
+    await request.post("/api/entries", {
+      data: {
+        description: `seed-other ${RUN}`,
+        tags: [otherTag],
+        ticket_id: "JIRA-2",
+        start_at: wibToUtc(EDIT_DATE, "13:00"),
+        end_at: wibToUtc(EDIT_DATE, "14:00"),
+      },
+    });
+    const created = await seedOne(request, marker); // tagged with TAG
+
+    await page.goto(`/recap/daily?date=${EDIT_DATE}`);
+    const row = page.getByTestId("activity-row").filter({ hasText: marker });
+    await row.click();
+    const modal = page.getByTestId("edit-entry-modal");
+    await expect(modal).toBeVisible();
+
+    // The entry's existing tag renders as a chip (loaded, not an empty field).
+    await expect(
+      modal.getByTestId("edit-tag-chip-label").filter({ hasText: TAG }),
+    ).toBeVisible();
+
+    // Focus the input → suggestion dropdown appears and EXCLUDES the already-
+    // selected TAG, but offers the other existing tag.
+    await page.getByTestId("edit-entry-tags").click();
+    const suggestions = page.getByTestId("edit-entry-tag-suggestions");
+    await expect(suggestions).toBeVisible();
+    await expect(suggestions.getByText(otherTag, { exact: true })).toBeVisible();
+    await expect(suggestions.getByText(TAG, { exact: true })).toHaveCount(0);
+
+    // Click a suggestion → it becomes a chip and is removed from the list.
+    await suggestions.getByText(otherTag, { exact: true }).click();
+    await page.getByTestId("edit-entry-save").click();
+    await expect(modal).toBeHidden();
+
+    // Persisted: entry now carries BOTH tags.
+    const after = await listForDay(request);
+    const saved = after.find((e) => e.id === created.id);
+    expect(saved?.tags).toContain(TAG);
+    expect(saved?.tags).toContain(otherTag);
+  });
 });
