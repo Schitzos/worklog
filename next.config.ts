@@ -1,6 +1,14 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Per-environment build directory. `next dev`, `next build`, and `next start`
+  // all read/write the SAME .next by default — so running the dev server while
+  // production (`next start`) is live rewrites .next out from under prod,
+  // corrupting its served build (every static chunk 400s). Giving dev its own
+  // dist dir (via NEXT_DIST_DIR=.next-dev in the dev script) keeps the two fully
+  // isolated: dev → .next-dev, build/start/test → .next.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
+
   // better-sqlite3 / node-cron / node-notifier are native (or native-dependent)
   // Node modules — keep them external to the server bundle so Next does not try
   // to bundle their .node binaries / `fs` requires.
