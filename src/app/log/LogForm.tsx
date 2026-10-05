@@ -143,6 +143,22 @@ export default function LogForm({ slot }: { slot?: string }) {
       descRef.current?.focus();
       return;
     }
+    if (tags.length === 0) {
+      setError("Add at least one tag.");
+      return;
+    }
+    if (!ticketId.trim()) {
+      setError("Ticket / backlog ID is required.");
+      return;
+    }
+    if (!startLocal) {
+      setError("Start time is required.");
+      return;
+    }
+    if (!endLocal) {
+      setError("End time is required.");
+      return;
+    }
     const start_at = wibLocalInputToUtcIso(startLocal);
     const end_at = wibLocalInputToUtcIso(endLocal);
     if (new Date(end_at).getTime() < new Date(start_at).getTime()) {
@@ -228,7 +244,7 @@ export default function LogForm({ slot }: { slot?: string }) {
               {/* Description */}
               <motion.div variants={fieldItem} style={{ marginBottom: "0.9rem" }}>
                 <label className="field-label" htmlFor="description">
-                  What did you do?
+                  What did you do? <span style={{ color: "var(--warn)" }}>*</span>
                 </label>
                 <textarea
                   id="description"
@@ -244,7 +260,7 @@ export default function LogForm({ slot }: { slot?: string }) {
               {/* Tags */}
               <motion.div variants={fieldItem} style={{ marginBottom: "0.9rem" }}>
                 <label className="field-label" htmlFor="tag-input">
-                  Tags
+                  Tags <span style={{ color: "var(--warn)" }}>*</span>
                 </label>
                 {tags.length > 0 ? (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginBottom: "0.5rem" }}>
@@ -306,7 +322,7 @@ export default function LogForm({ slot }: { slot?: string }) {
               {/* Ticket */}
               <motion.div variants={fieldItem} style={{ marginBottom: "0.9rem" }}>
                 <label className="field-label" htmlFor="ticket">
-                  Ticket / backlog ID
+                  Ticket / backlog ID <span style={{ color: "var(--warn)" }}>*</span>
                 </label>
                 <input
                   id="ticket"
@@ -328,7 +344,7 @@ export default function LogForm({ slot }: { slot?: string }) {
               >
                 <div>
                   <label className="field-label" htmlFor="start">
-                    Start (WIB)
+                    Start (WIB) <span style={{ color: "var(--warn)" }}>*</span>
                   </label>
                   <input
                     id="start"
@@ -340,7 +356,7 @@ export default function LogForm({ slot }: { slot?: string }) {
                 </div>
                 <div>
                   <label className="field-label" htmlFor="end">
-                    End (WIB)
+                    End (WIB) <span style={{ color: "var(--warn)" }}>*</span>
                   </label>
                   <input
                     id="end"
