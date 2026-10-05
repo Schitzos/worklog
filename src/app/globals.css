@@ -551,6 +551,16 @@ body {
   .bento-summary { grid-column: 1 / -1; }
 }
 
+/* Clickable activity rows in the daily recap "Activities by tag" list. */
+.activity-row-btn {
+  transition: background 0.15s var(--ease-fluid);
+}
+.activity-row-btn:hover,
+.activity-row-btn:focus-visible {
+  background: color-mix(in srgb, var(--accent) 10%, transparent) !important;
+  outline: none;
+}
+
 /* Recap per-tag growing bars (same track as rail, bigger). */
 .recap-tagbar-track {
   height: 10px;

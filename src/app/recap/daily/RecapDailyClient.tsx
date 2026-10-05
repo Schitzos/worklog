@@ -365,10 +365,271 @@ function DailySummaryCard({ workDate }: { workDate: string }) {
   );
 }
 
+const WIB_OFFSET_MS_EDIT = 7 * 60 * 60_000;
+
+/** UTC ISO → value for a <input type="datetime-local"> in WIB wall-clock. */
+function isoToWibLocal(iso: string): string {
+  const wib = new Date(new Date(iso).getTime() + WIB_OFFSET_MS_EDIT);
+  return wib.toISOString().slice(0, 16); // "YYYY-MM-DDTHH:mm"
+}
+
+/** A WIB datetime-local value ("YYYY-MM-DDTHH:mm") → UTC ISO instant. */
+function wibLocalToIso(local: string): string {
+  // Interpret the wall-clock as WIB (UTC+7), then convert back to UTC.
+  const asUtc = new Date(`${local}:00.000Z`).getTime();
+  return new Date(asUtc - WIB_OFFSET_MS_EDIT).toISOString();
+}
+
+/**
+ * Edit form for one activity. Opens as a modal; edits description, tags,
+ * ticket, start/end (WIB), and summary; saves via PATCH /api/entries/:id.
+ * Never deletes — only updates existing fields in place.
+ */
+function EditEntryModal({
+  entry,
+  onClose,
+  onSaved,
+}: {
+  entry: EntryRow;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [description, setDescription] = useState(entry.description);
+  const [tags, setTags] = useState(entry.tags.join(", "));
+  const [ticket, setTicket] = useState(entry.ticket_id ?? "");
+  const [summary, setSummary] = useState(entry.summary ?? "");
+  const [startLocal, setStartLocal] = useState(isoToWibLocal(entry.start_at));
+  const [endLocal, setEndLocal] = useState(isoToWibLocal(entry.end_at));
+  const [state, setState] = useState<"idle" | "saving" | "error">("idle");
+  const [errMsg, setErrMsg] = useState("");
+
+  // Close on Escape.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const save = useCallback(async () => {
+    const desc = description.trim();
+    if (!desc) {
+      setErrMsg("Description cannot be empty.");
+      setState("error");
+      return;
+    }
+    const startIso = wibLocalToIso(startLocal);
+    const endIso = wibLocalToIso(endLocal);
+    if (new Date(endIso).getTime() < new Date(startIso).getTime()) {
+      setErrMsg("End time must be at or after start time.");
+      setState("error");
+      return;
+    }
+    setState("saving");
+    setErrMsg("");
+    try {
+      const res = await fetch(`/api/entries/${entry.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          description: desc,
+          tags: tags
+            .split(",")
+            .map((t) => t.trim())
+            .filter(Boolean),
+          ticket_id: ticket.trim() || null,
+          summary: summary.trim() || null,
+          start_at: startIso,
+          end_at: endIso,
+        }),
+      });
+      if (!res.ok) {
+        const d = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(d.error || `HTTP ${res.status}`);
+      }
+      onSaved();
+    } catch (err) {
+      setErrMsg(err instanceof Error ? err.message : "Save failed.");
+      setState("error");
+    }
+  }, [description, tags, ticket, summary, startLocal, endLocal, entry.id, onSaved]);
+
+  const field: React.CSSProperties = {
+    width: "100%",
+    background: "var(--canvas)",
+    color: "var(--ink)",
+    border: "1px solid var(--hairline)",
+    borderRadius: "0.6rem",
+    padding: "0.55rem 0.7rem",
+    fontSize: "0.86rem",
+    fontFamily: "inherit",
+  };
+  const labelStyle: React.CSSProperties = {
+    display: "block",
+    fontSize: "0.74rem",
+    color: "var(--muted)",
+    marginBottom: "0.3rem",
+    fontWeight: 600,
+  };
+
+  return (
+    <div
+      data-testid="edit-entry-overlay"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 100,
+        background: "rgba(0,0,0,0.45)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "1rem",
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Edit activity"
+        data-testid="edit-entry-modal"
+        style={{
+          width: "min(540px, 100%)",
+          maxHeight: "90dvh",
+          overflowY: "auto",
+          background: "var(--surface)",
+          border: "1px solid var(--hairline)",
+          borderRadius: "1.1rem",
+          padding: "1.3rem 1.4rem",
+          boxShadow: "0 24px 60px rgba(0,0,0,0.3)",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "1rem" }}>
+          <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 600 }}>Edit activity</h3>
+          <button
+            type="button"
+            data-testid="edit-entry-cancel"
+            onClick={onClose}
+            aria-label="Close"
+            style={{ background: "none", border: "none", color: "var(--muted)", fontSize: "1.3rem", cursor: "pointer", lineHeight: 1 }}
+          >
+            ×
+          </button>
+        </div>
+
+        <div style={{ display: "grid", gap: "0.85rem" }}>
+          <div>
+            <label style={labelStyle} htmlFor="edit-desc">Description</label>
+            <input
+              id="edit-desc"
+              data-testid="edit-entry-description"
+              style={field}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label style={labelStyle} htmlFor="edit-tags">Tags <span style={{ fontWeight: 400 }}>· comma-separated</span></label>
+            <input
+              id="edit-tags"
+              data-testid="edit-entry-tags"
+              style={field}
+              value={tags}
+              placeholder="backlog, bugfix"
+              onChange={(e) => setTags(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label style={labelStyle} htmlFor="edit-ticket">Ticket <span style={{ fontWeight: 400 }}>· optional</span></label>
+            <input
+              id="edit-ticket"
+              data-testid="edit-entry-ticket"
+              style={field}
+              value={ticket}
+              placeholder="JIRA-123"
+              onChange={(e) => setTicket(e.target.value)}
+            />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+            <div>
+              <label style={labelStyle} htmlFor="edit-start">Start <span style={{ fontWeight: 400 }}>· WIB</span></label>
+              <input
+                id="edit-start"
+                data-testid="edit-entry-start"
+                type="datetime-local"
+                className="mono"
+                style={field}
+                value={startLocal}
+                onChange={(e) => setStartLocal(e.target.value)}
+              />
+            </div>
+            <div>
+              <label style={labelStyle} htmlFor="edit-end">End <span style={{ fontWeight: 400 }}>· WIB</span></label>
+              <input
+                id="edit-end"
+                data-testid="edit-entry-end"
+                type="datetime-local"
+                className="mono"
+                style={field}
+                value={endLocal}
+                onChange={(e) => setEndLocal(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label style={labelStyle} htmlFor="edit-summary">Summary <span style={{ fontWeight: 400 }}>· optional</span></label>
+            <textarea
+              id="edit-summary"
+              data-testid="edit-entry-summary"
+              style={{ ...field, minHeight: "4rem", resize: "vertical", lineHeight: 1.5 }}
+              value={summary}
+              rows={3}
+              onChange={(e) => setSummary(e.target.value)}
+            />
+          </div>
+
+          {state === "error" ? (
+            <p data-testid="edit-entry-error" className="mono" style={{ margin: 0, color: "var(--warn)", fontSize: "0.76rem" }}>
+              {errMsg}
+            </p>
+          ) : null}
+
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.6rem", marginTop: "0.2rem" }}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{ background: "none", border: "1px solid var(--hairline)", color: "var(--ink)", borderRadius: "var(--r-pill)", padding: "0.5rem 1rem", fontSize: "0.82rem", cursor: "pointer" }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              data-testid="edit-entry-save"
+              className="pill-cta"
+              onClick={() => void save()}
+              disabled={state === "saving"}
+              style={{ opacity: state === "saving" ? 0.5 : 1 }}
+            >
+              {state === "saving" ? "Saving…" : "Save changes"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function RecapDailyClient({ initial }: { initial: DailyRecap }) {
   const [date, setDate] = useState(initial.workDate);
   const [recap, setRecap] = useState<DailyRecap>(initial);
   const [loading, setLoading] = useState(false);
+  const [editing, setEditing] = useState<EntryRow | null>(null);
 
   const load = useCallback(async (d: string) => {
     setLoading(true);
@@ -379,6 +640,11 @@ export function RecapDailyClient({ initial }: { initial: DailyRecap }) {
       setLoading(false);
     }
   }, []);
+
+  const handleSaved = useCallback(() => {
+    setEditing(null);
+    void load(recap.workDate);
+  }, [load, recap.workDate]);
 
   useEffect(() => {
     if (date !== recap.workDate) void load(date);
@@ -516,18 +782,41 @@ export function RecapDailyClient({ initial }: { initial: DailyRecap }) {
                       </div>
                       <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "0.3rem" }}>
                         {g.entries.map((e) => (
-                          <li key={e.id} style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", borderTop: "1px solid var(--hairline)", paddingTop: "0.3rem" }}>
-                            <span style={{ fontSize: "0.85rem" }}>
-                              {e.description}
-                              {e.ticket_id ? (
-                                <span className="mono" style={{ color: "var(--accent)", marginLeft: "0.4rem", fontSize: "0.76rem" }}>
-                                  {e.ticket_id}
-                                </span>
-                              ) : null}
-                            </span>
-                            <span className="mono" style={{ color: "var(--muted)", fontSize: "0.76rem", whiteSpace: "nowrap" }}>
-                              {wibHHMM(e.start_at)}–{wibHHMM(e.end_at)}
-                            </span>
+                          <li key={e.id} style={{ borderTop: "1px solid var(--hairline)" }}>
+                            <button
+                              type="button"
+                              data-testid="activity-row"
+                              onClick={() => setEditing(e)}
+                              title="Click to edit this activity"
+                              className="activity-row-btn"
+                              style={{
+                                width: "100%",
+                                display: "flex",
+                                justifyContent: "space-between",
+                                gap: "0.75rem",
+                                alignItems: "baseline",
+                                background: "none",
+                                border: "none",
+                                textAlign: "left",
+                                cursor: "pointer",
+                                padding: "0.35rem 0.25rem",
+                                borderRadius: "0.4rem",
+                                color: "inherit",
+                                font: "inherit",
+                              }}
+                            >
+                              <span style={{ fontSize: "0.85rem" }}>
+                                {e.description}
+                                {e.ticket_id ? (
+                                  <span className="mono" style={{ color: "var(--accent)", marginLeft: "0.4rem", fontSize: "0.76rem" }}>
+                                    {e.ticket_id}
+                                  </span>
+                                ) : null}
+                              </span>
+                              <span className="mono" style={{ color: "var(--muted)", fontSize: "0.76rem", whiteSpace: "nowrap" }}>
+                                {wibHHMM(e.start_at)}–{wibHHMM(e.end_at)}
+                              </span>
+                            </button>
                           </li>
                         ))}
                       </ul>
@@ -540,11 +829,34 @@ export function RecapDailyClient({ initial }: { initial: DailyRecap }) {
                       </div>
                       <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "0.3rem" }}>
                         {untagged.map((e) => (
-                          <li key={e.id} style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", borderTop: "1px solid var(--hairline)", paddingTop: "0.3rem" }}>
-                            <span style={{ fontSize: "0.85rem" }}>{e.description}</span>
-                            <span className="mono" style={{ color: "var(--muted)", fontSize: "0.76rem", whiteSpace: "nowrap" }}>
-                              {wibHHMM(e.start_at)}–{wibHHMM(e.end_at)}
-                            </span>
+                          <li key={e.id} style={{ borderTop: "1px solid var(--hairline)" }}>
+                            <button
+                              type="button"
+                              data-testid="activity-row"
+                              onClick={() => setEditing(e)}
+                              title="Click to edit this activity"
+                              className="activity-row-btn"
+                              style={{
+                                width: "100%",
+                                display: "flex",
+                                justifyContent: "space-between",
+                                gap: "0.75rem",
+                                alignItems: "baseline",
+                                background: "none",
+                                border: "none",
+                                textAlign: "left",
+                                cursor: "pointer",
+                                padding: "0.35rem 0.25rem",
+                                borderRadius: "0.4rem",
+                                color: "inherit",
+                                font: "inherit",
+                              }}
+                            >
+                              <span style={{ fontSize: "0.85rem" }}>{e.description}</span>
+                              <span className="mono" style={{ color: "var(--muted)", fontSize: "0.76rem", whiteSpace: "nowrap" }}>
+                                {wibHHMM(e.start_at)}–{wibHHMM(e.end_at)}
+                              </span>
+                            </button>
                           </li>
                         ))}
                       </ul>
@@ -562,6 +874,10 @@ export function RecapDailyClient({ initial }: { initial: DailyRecap }) {
           <DailySummaryCard key={`sum-${recap.workDate}`} workDate={recap.workDate} />
         </div>
       )}
+
+      {editing ? (
+        <EditEntryModal entry={editing} onClose={() => setEditing(null)} onSaved={handleSaved} />
+      ) : null}
     </main>
   );
 }
