@@ -43,6 +43,11 @@ export default defineConfig({
     env: {
       // Isolate test writes into a throwaway DB file (gitignored).
       DATABASE_URL: `file:./${TEST_DB}`,
+      // Isolate the test server's build dir too. `next dev` writes .next by
+      // default — the SAME dir `next start` serves prod from — so a test run
+      // would otherwise corrupt the live prod build (every chunk 400s). Give
+      // the test server its own .next-test (gitignored).
+      NEXT_DIST_DIR: ".next-test",
     },
   },
 });

@@ -50,7 +50,10 @@ async function seed(request: APIRequestContext) {
 
   const rows: [string, string, string, string][] = [
     [`P5 standup A ${RUN}`, "10:00", "11:00", TAG_MEET],
-    [`P5 fix login ${RUN}`, "11:00", "12:30", TAG_BUG],
+    // 11:00–12:00 stays entirely inside the 10-12 slot. (Was 11:00–12:30, which
+    // bled into the 12-14 slot and, on weeks where today IS Monday, filled
+    // today's 12-14 — colliding with recap/reminder specs that need it clear.)
+    [`P5 fix login ${RUN}`, "11:00", "12:00", TAG_BUG],
   ];
 
   // Day A entries (Monday).

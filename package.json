@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "DATABASE_URL=file:./worklog.dev.db next dev -H 127.0.0.1 -p 7071",
+    "dev": "NEXT_DIST_DIR=.next-dev DATABASE_URL=file:./worklog.dev.db next dev -H 127.0.0.1 -p 7071",
     "build": "next build",
     "start": "DATABASE_URL=file:./worklog.prod.db PORT=7070 next start -H 127.0.0.1 -p 7070",
     "start:prod": "DATABASE_URL=file:./worklog.prod.db PORT=7070 next start -H 127.0.0.1 -p 7070",
